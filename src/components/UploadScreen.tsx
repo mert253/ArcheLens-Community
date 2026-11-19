@@ -72,6 +72,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
     };
 
     const handleCamera = () => {
+        const fileInput = fileInputRef.current;
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
@@ -79,11 +80,11 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
         input.onchange = (e: Event) => {
             const target = e.target as HTMLInputElement;
             const file = target.files?.[0];
-            if (file && fileInputRef.current) {
+            if (file && fileInput && fileInputRef.current === fileInput) {
                 const dt = new DataTransfer();
                 dt.items.add(file);
-                fileInputRef.current.files = dt.files;
-                fileInputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
+                fileInput.files = dt.files;
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
             }
         };
         input.click();

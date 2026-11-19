@@ -1,17 +1,18 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, request, type Server } from 'node:http';
-import { createSecurityApp, errorHandler, imageSchema, withPostAdmission } from '../server/security';
+import { createSecurityApp, errorHandler, imageSchema, withPostAdmission, type SecurityOptions } from '../server/security';
 
 const servers: Server[] = [];
 async function fixture(
   env: Record<string, string> = {},
-  verifyToken?: (token: string) => Promise<{ id: string } | null>,
+  verifyToken?: SecurityOptions['verifyToken'],
   work?: () => Promise<void>,
 ) {
   const app = createSecurityApp({ env, verifyToken });
   app.get('/api/private', (_req, res) => res.json({ user: res.locals.user.id }));
   app.post('/api/image', (req, res) => { imageSchema.parse(req.body); res.json({ ok: true }); });
+  app.all('/api/body-policy', (req, res) => res.json({ parsed: req.body !== undefined }));
   if (work) {
     app.post('/api/work', withPostAdmission(async (_req, res) => {
       res.sendStatus(204);
@@ -38,6 +39,17 @@ describe('backend trust boundaries', () => {
     const base = await fixture({}, async token => token === 'example-invalid-token' ? { id: 'user-a' } : null);
     expect((await fetch(`${base}/api/private`, { headers: { Authorization: 'Bearer invalid' } })).status).toBe(401);
     expect(await (await fetch(`${base}/api/private`, { headers: { Authorization: 'Bearer example-invalid-token' } })).json()).toEqual({ user: 'user-a' });
+  });
+  it('requires a permanent account for hosted authentication', async () => {
+    const base = await fixture({}, async token => ({
+      id: 'account',
+      is_anonymous: token === 'test-token',
+    }));
+    const guest = await fetch(`${base}/api/private`, { headers: { Authorization: 'Bearer test-token' } });
+    expect(guest.status).toBe(401);
+    const member = await fetch(`${base}/api/private`, { headers: { Authorization: 'Bearer dummy-token' } });
+    expect(member.status).toBe(200);
+    expect(await member.json()).toEqual({ user: 'account' });
   });
   it('allows explicit loopback mode but blocks rebinding and null/arbitrary origins', async () => {
     const base = await fixture({ AUTH_MODE: 'local', HOST: '127.0.0.1' });
@@ -66,6 +78,16 @@ describe('backend trust boundaries', () => {
     const base = await fixture();
     const response = await fetch(`${base}/api/image`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{invalid' });
     expect(response.status).toBe(401);
+  });
+  it('parses JSON only for POST requests', async () => {
+    const base = await fixture({ AUTH_MODE: 'local' });
+    const send = (method: string) => fetch(`${base}/api/body-policy`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: 'value' }),
+    });
+    expect(await (await send('PUT')).json()).toEqual({ parsed: false });
+    expect(await (await send('POST')).json()).toEqual({ parsed: true });
   });
   it('holds admission through handler settlement after the response finishes', async () => {
     let finishWork = () => {};

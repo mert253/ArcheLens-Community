@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useRef, useState, useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
 import { useUIStore } from './store/useUIStore';
-import { useAnalyzeArtifact, useCompareArtifacts } from './hooks/useArtifacts';
+import { captureArtifactPrincipal, isCurrentImageSelection, useAnalyzeArtifact, useCompareArtifacts } from './hooks/useArtifacts';
 import { useHistory } from './hooks/useHistory';
 import { useAIMode } from './hooks/useAIMode';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -25,7 +25,7 @@ import { API_BASE } from './lib/config';
 
 // ─── Main app (rendered only after setup is confirmed) ───────────────────────
 function MainApp() {
-  const { image, updateState, revokeUrls } = useAppStore();
+  const { image, authRevision, updateState, revokeUrls } = useAppStore();
   const { appMode, lang, workspaceId } = useUIStore();
   const history = useHistory();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,20 +34,24 @@ function MainApp() {
   const analyzeMutation = useAnalyzeArtifact();
   const compareMutation = useCompareArtifacts();
 
+  const startAnalysis = (file: File, historySource?: string) => {
+    const principal = captureArtifactPrincipal();
+    revokeUrls();
+    const selection = { ...principal, image: URL.createObjectURL(file) };
+    updateState({ image: selection.image, imageBase64: null, result: null, error: null });
+    analyzeMutation.mutate(
+      { file, lang, selection },
+      { onSuccess: (res) => history.addEntry(historySource ?? selection.image, res, undefined, () => isCurrentImageSelection(selection)) },
+    );
+  };
+
   const onFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      revokeUrls();
-      const url = URL.createObjectURL(file);
-      updateState({ image: url, result: null, error: null });
-      analyzeMutation.mutate(
-        { file, lang },
-        { onSuccess: (res) => history.addEntry(url, res) }
-      );
-    }
+    if (file) startAnalysis(file);
   };
 
   const handleUrlAnalyze = async (url: string) => {
+    const selection = { ...captureArtifactPrincipal(), image: useAppStore.getState().image };
     try {
       const { updateUI } = useUIStore.getState();
       updateState({ error: null, result: null, restoredImage: null });
@@ -55,20 +59,16 @@ function MainApp() {
       useAppStore.getState().addLog('info', `Fetching from URL: ${url}`);
 
       const response = await fetch(url);
+      if (!isCurrentImageSelection(selection)) return;
       if (!response.ok) throw new Error('Failed to fetch image from URL');
       const blob = await response.blob();
+      if (!isCurrentImageSelection(selection)) return;
       if (!blob.type.startsWith('image/')) throw new Error('URL does not point to a valid image');
 
       const file = new File([blob], 'url-image.' + blob.type.split('/')[1], { type: blob.type });
-      revokeUrls();
-      updateState({ image: URL.createObjectURL(file), result: null, error: null });
-
-      analyzeMutation.mutate(
-        { file, lang },
-        { onSuccess: (res) => history.addEntry(url, res) }
-      );
+      startAnalysis(file, url);
     } catch (err: unknown) {
-      updateState({ error: err instanceof Error ? err.message : String(err) });
+      if (isCurrentImageSelection(selection)) updateState({ error: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -149,10 +149,11 @@ function MainApp() {
           <>
             {!image ? (
               <UploadScreen
+                key={authRevision}
                 fileInputRef={fileInputRef as any}
                 onFileChange={onFileChange}
                 onMultiFileChange={() => {}}
-                onCompareChange={(files) => compareMutation.mutate(files)}
+                onCompareChange={(files) => compareMutation.mutate({ files, principal: captureArtifactPrincipal() })}
                 onUrlAnalyze={handleUrlAnalyze}
                 lang={lang}
               />

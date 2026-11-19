@@ -19,20 +19,20 @@ export const artifactService = {
     };
   },
 
-  async analyze(base64: string, mimeType: string, lang: Language, cvSummary?: string): Promise<AnalysisResult> {
+  async analyze(base64: string, mimeType: string, lang: Language, cvSummary?: string, expectedUserId?: string | null): Promise<AnalysisResult> {
     const { resolvedAIMode } = useUIStore.getState();
     if (resolvedAIMode === 'offline') {
       return analyzeWithWebLLM(base64, mimeType, lang);
     }
-    return await analyzeArtifact(base64, mimeType, lang, cvSummary);
+    return await analyzeArtifact(base64, mimeType, lang, cvSummary, expectedUserId);
   },
 
   async restore(base64: string, mimeType: string, prompt: string, expectedUserId?: string | null): Promise<any> {
     return await restoreArtifact(base64, mimeType, prompt, expectedUserId);
   },
 
-  async compare(files: { base64Data: string; mimeType: string }[], lang: Language) {
-    return await compareArtifacts(files, lang);
+  async compare(files: { base64Data: string; mimeType: string }[], lang: Language, expectedUserId?: string | null) {
+    return await compareArtifacts(files, lang, expectedUserId);
   },
 
 };

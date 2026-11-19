@@ -7,7 +7,7 @@ import { z } from 'zod';
 export type Environment = Record<string, string | undefined>;
 export interface SecurityOptions {
   env?: Environment;
-  verifyToken?: (token: string) => Promise<{ id: string } | null>;
+  verifyToken?: (token: string) => Promise<{ id: string; is_anonymous?: boolean } | null>;
 }
 export class HttpError extends Error {
   constructor(public status: number, public code: string) { super(code); }
@@ -152,7 +152,7 @@ export function createSecurityApp(options: SecurityOptions = {}) {
     } });
     verifyToken = async token => {
       const { data, error } = await sb.auth.getUser(token);
-      return error || !data.user ? null : { id: data.user.id };
+      return error ? null : data.user;
     };
   }
   const requireAuth: RequestHandler = async (req, res, next) => {
@@ -162,8 +162,8 @@ export function createSecurityApp(options: SecurityOptions = {}) {
     if (!verifyToken) return res.status(503).json({ error_code: 'AUTH_NOT_CONFIGURED', message: 'Authentication is not configured.' });
     try {
       const user = await verifyToken(match[1]);
-      if (!user) return res.status(401).json({ error_code: 'UNAUTHORIZED', message: 'Invalid session.' });
-      res.locals.user = user; next();
+      if (!user || user.is_anonymous) return res.status(401).json({ error_code: 'UNAUTHORIZED', message: 'Invalid session.' });
+      res.locals.user = { id: user.id }; next();
     } catch { res.status(503).json({ error_code: 'AUTH_UNAVAILABLE', message: 'Authentication is temporarily unavailable.' }); }
   };
   // Apply a socket/IP limit before auth network requests, and a user limit afterwards.
@@ -171,6 +171,7 @@ export function createSecurityApp(options: SecurityOptions = {}) {
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, keyGenerator: (_req, res) => res.locals.user.id, standardHeaders: 'draft-8', legacyHeaders: false, message: { error_code: 'RATE_LIMITED', message: 'Too many requests.' } }));
   let activeRequests = 0;
   const requestsByUser = new Map<string, number>();
+  const parseJson = express.json({ limit: '12mb', strict: true });
   app.use('/api', (req, res, next) => {
     if (req.method !== 'POST') return next();
     if (res.destroyed) return;
@@ -193,9 +194,8 @@ export function createSecurityApp(options: SecurityOptions = {}) {
     };
     res.once('finish', releaseIfUnclaimed);
     res.once('close', releaseIfUnclaimed);
-    next();
+    parseJson(req, res, next);
   });
-  app.use('/api', express.json({ limit: '12mb', strict: true }));
   return app;
 }
 export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {

@@ -1,5 +1,6 @@
 import express from 'express';
 import type { Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import path from 'node:path';
 import { resolveStaticRoot } from './server/staticRoot';
 import { GoogleGenerativeAI, SchemaType, type Schema } from '@google/generative-ai';
@@ -733,7 +734,13 @@ if (env.STATIC_DIR) {
     const staticRoot = resolveStaticRoot(env.STATIC_DIR, options.staticApplicationRoot ?? process.cwd());
     const indexPath = path.join(staticRoot, 'index.html');
     app.use(express.static(staticRoot, { dotfiles: 'deny', index: false }));
-    app.get('/{*path}', (_req, res) => res.sendFile(indexPath));
+    app.get('/{*path}', rateLimit({
+        windowMs: 60_000,
+        limit: 300,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        message: { error_code: 'RATE_LIMITED', message: 'Too many requests.' },
+    }), (_req, res) => res.sendFile(indexPath));
 }
 app.use(errorHandler);
 return app;

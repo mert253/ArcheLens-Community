@@ -7,6 +7,7 @@ export interface AppState {
   session: Session | null;
   user: User | null;
   authLoading: boolean;
+  authRevision: number;
 
   image: string | null;
   imageBase64: string | null;
@@ -64,6 +65,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   session: null,
   user: null,
   authLoading: true,
+  authRevision: 0,
 
   image: null,
   imageBase64: null,
@@ -100,12 +102,12 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     let receivedAuthEvent = false;
     const applySession = (session: Session | null) => {
       const user = session?.user ?? null;
-      const previousUser = get().user;
+      const { user: previousUser, authRevision } = get();
       if (previousUser && previousUser.id !== user?.id) {
         get().revokeUrls();
         get().resetApp();
       }
-      set({ session, user, authLoading: false });
+      set({ session, user, authLoading: false, authRevision: authRevision + Number(previousUser?.id !== user?.id) });
     };
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!receivedAuthEvent) applySession(session);

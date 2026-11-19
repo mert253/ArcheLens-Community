@@ -8,33 +8,58 @@ import { Language } from '../types';
 import { t } from '../i18n';
 import { runPreAnalyze, pixelsToDataUrl, runCLAHE } from '../lib/cvAnalysis';
 
+export function captureArtifactPrincipal() {
+  const { user, authRevision } = useAppStore.getState();
+  return { userId: user?.id ?? null, authRevision };
+}
+
+type ArtifactPrincipal = ReturnType<typeof captureArtifactPrincipal>;
+type ImageSelection = ArtifactPrincipal & { image: string | null };
+
+function isCurrentArtifactPrincipal(principal: ArtifactPrincipal) {
+  const current = captureArtifactPrincipal();
+  return principal.userId === current.userId && principal.authRevision === current.authRevision;
+}
+
+export function isCurrentImageSelection(selection: ImageSelection) {
+  return isCurrentArtifactPrincipal(selection) && selection.image === useAppStore.getState().image;
+}
+
 function captureArtifactSelection() {
-  const { user, image, imageBase64 } = useAppStore.getState();
-  return { userId: user?.id ?? null, image, imageBase64 };
+  const { image, imageBase64 } = useAppStore.getState();
+  return { ...captureArtifactPrincipal(), image, imageBase64 };
 }
 
 function isCurrentArtifact(selection?: ReturnType<typeof captureArtifactSelection>) {
-  const current = captureArtifactSelection();
-  return selection && selection.userId === current.userId &&
-    selection.image === current.image && selection.imageBase64 === current.imageBase64;
+  return selection && isCurrentImageSelection(selection) && selection.imageBase64 === useAppStore.getState().imageBase64;
 }
 
 function requireCurrentArtifact(selection: ReturnType<typeof captureArtifactSelection>) {
   if (!isCurrentArtifact(selection)) throw new DOMException('The active artifact changed.', 'AbortError');
 }
 
+function requireCurrentAnalysis(selection: ImageSelection) {
+  if (!isCurrentImageSelection(selection)) throw new DOMException('The active artifact changed.', 'AbortError');
+}
+
+function requireCurrentPrincipal(principal: ArtifactPrincipal) {
+  if (!isCurrentArtifactPrincipal(principal)) throw new DOMException('The active account changed.', 'AbortError');
+}
+
 export function useAnalyzeArtifact() {
   return useMutation({
     mutationKey: ['analyze'],
-    mutationFn: async ({ file, lang }: { file: File, lang: Language }) => {
+    mutationFn: async ({ file, lang, selection }: { file: File; lang: Language; selection: ImageSelection & { image: string } }) => {
+      requireCurrentAnalysis(selection);
       const { base64, mimeType } = await artifactService.compressAndConvert(file);
+      requireCurrentAnalysis(selection);
       useAppStore.getState().updateState({ imageBase64: base64, imageMimeType: mimeType });
 
       // ── Faz 4: CV pre-analysis (3s timeout — non-blocking on failure) ──
       let cvSummary: string | undefined;
       try {
-        const imageUrl = useAppStore.getState().image!;
-        const cvResult = await runPreAnalyze(imageUrl);
+        const cvResult = await runPreAnalyze(selection.image);
+        requireCurrentAnalysis(selection);
         cvSummary = cvResult.summary;
         // Store overlay + region map for display
         const overlayDataUrl = pixelsToDataUrl(cvResult.overlayPixels, cvResult.w, cvResult.h);
@@ -48,15 +73,19 @@ export function useAnalyzeArtifact() {
         });
         useAppStore.getState().addLog('info', `CV: ${cvResult.edgeCount} kenar, ${cvResult.contourCount} kontur tespiti`);
       } catch (cvErr) {
+        requireCurrentAnalysis(selection);
         const errorMessage = cvErr instanceof Error ? cvErr.message : String(cvErr);
         // Silently skip CV error, do not show in logs to user as it is non-fatal
         console.warn('[CV] Pre-analysis failed (non-fatal)', { error: errorMessage });
       }
 
-      const res = await artifactService.analyze(base64, mimeType, lang, cvSummary);
+      requireCurrentAnalysis(selection);
+      const res = await artifactService.analyze(base64, mimeType, lang, cvSummary, selection.userId);
+      requireCurrentAnalysis(selection);
       return res;
     },
-    onMutate: () => {
+    onMutate: ({ selection }) => {
+      if (!isCurrentImageSelection(selection)) return;
       const { updateState, addLog } = useAppStore.getState();
       const { lang, resolvedAIMode } = useUIStore.getState();
       updateState({ result: null, restoredImage: null, systemLogs: [], evidenceRefs: [], hasEvidence: false, cvSummary: null, cvOverlayDataUrl: null, cvRegionMapDataUrl: null });
@@ -68,7 +97,8 @@ export function useAnalyzeArtifact() {
       }
       useUIStore.getState().updateUI({ activeTab: 'overview' });
     },
-    onSuccess: (data) => {
+    onSuccess: (data, { selection }) => {
+      if (!isCurrentImageSelection(selection)) return;
       const { updateState, addLog } = useAppStore.getState();
       const { lang, resolvedAIMode } = useUIStore.getState();
       if (resolvedAIMode === 'offline') {
@@ -184,26 +214,33 @@ export function useRestoreArtifact() {
 export function useCompareArtifacts() {
   return useMutation({
     mutationKey: ['compare'],
-    mutationFn: async (files: File[]) => {
+    mutationFn: async ({ files, principal }: { files: File[]; principal: ArtifactPrincipal }) => {
+      requireCurrentPrincipal(principal);
       const { lang } = useUIStore.getState();
       const processFiles = await Promise.all(
         files.map(async f => artifactService.compressAndConvert(f))
       );
+      requireCurrentPrincipal(principal);
       const res = await artifactService.compare(
         processFiles.map(pf => ({ base64Data: pf.base64, mimeType: pf.mimeType })),
-        lang
+        lang,
+        principal.userId,
       );
+      requireCurrentPrincipal(principal);
       return res;
     },
-    onMutate: (files) => {
+    onMutate: ({ files, principal }) => {
+      if (!isCurrentArtifactPrincipal(principal)) return;
       const urls = files.map(f => URL.createObjectURL(f));
       useAppStore.getState().updateState({ 
         compareImages: urls,
         compareResult: null,
       });
       useUIStore.getState().setAppMode('detective');
+      return urls;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, { principal }, urls) => {
+      if (!isCurrentArtifactPrincipal(principal) || !urls || useAppStore.getState().compareImages !== urls) return;
       useAppStore.getState().updateState({ compareResult: data });
     }
   });

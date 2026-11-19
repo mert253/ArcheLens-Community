@@ -23,7 +23,9 @@ function useDexieHistory() {
     imageDataUrl: string,
     result: AnalysisResult,
     restoredImageUrl?: string,
+    canSave: () => boolean = () => true,
   ) => {
+    if (!canSave()) return;
     let thumbnailUrl = imageDataUrl;
     try {
       thumbnailUrl = await createThumbnail(imageDataUrl, 200);
@@ -31,14 +33,18 @@ function useDexieHistory() {
       console.warn('Failed to create thumbnail:', err instanceof Error ? err.message : String(err));
     }
     try {
-      await dexieDb.analyses.add({
-        id: crypto.randomUUID(),
-        timestamp: Date.now(),
-        imageDataUrl: thumbnailUrl,
-        result,
-        restoredImageUrl,
+      await dexieDb.transaction('rw', dexieDb.analyses, async () => {
+        if (!canSave()) return;
+        await dexieDb.analyses.add({
+          id: crypto.randomUUID(),
+          timestamp: Date.now(),
+          imageDataUrl: thumbnailUrl,
+          result,
+          restoredImageUrl,
+        });
       });
     } catch (err) {
+      if (!canSave()) return;
       console.error('[Dexie] Save failed:', err);
       const errorMessage = err instanceof Error ? err.message : String(err);
       useAppStore.getState().addLog('error', '[Dexie] Save failed', { error: errorMessage });

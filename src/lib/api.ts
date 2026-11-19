@@ -26,11 +26,12 @@ export async function analyzeArtifact(
     base64Data: string,
     mimeType: string,
     lang?: Language,
-    cvSummary?: string
+    cvSummary?: string,
+    expectedUserId?: string | null,
 ): Promise<AnalysisResult> {
     const response = await fetch(`${API_BASE_URL}/analyze`, {
         method: 'POST',
-        headers: await getAuthHeaders(),
+        headers: await getAuthHeaders(true, expectedUserId),
         body: JSON.stringify({
             images: [{ data: base64Data, mimeType }],
             lang: lang || 'tr',
@@ -49,11 +50,12 @@ export async function analyzeArtifact(
 // ─── COMPARISON ──────────────────────────────────────────────
 export async function compareArtifacts(
     files: { base64Data: string; mimeType: string }[],
-    lang?: Language
+    lang?: Language,
+    expectedUserId?: string | null,
 ): Promise<any> {
     const response = await fetch(`${API_BASE_URL}/compare`, {
         method: 'POST',
-        headers: await getAuthHeaders(),
+        headers: await getAuthHeaders(true, expectedUserId),
         body: JSON.stringify({
             images: files.map(f => ({ data: f.base64Data, mimeType: f.mimeType })),
             lang: lang || 'tr',
