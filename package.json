@@ -65,7 +65,7 @@
     "esbuild": "0.28.2",
     "jsdom": "28.1.0",
     "postcss": "8.5.32",
-    "tailwindcss": "4.2.2",
+    "tailwindcss": "4.3.5",
     "ts-node": "10.9.2",
     "tsx": "4.23.15",
     "typescript": "5.8.3",
