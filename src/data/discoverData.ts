@@ -1,0 +1,163 @@
+/**
+ * Static demo data for the Discover Globe.
+ * Each entry represents a famous artifact plotted on the 3D globe.
+ */
+export interface DiscoverPin {
+    id: string;
+    title: string;
+    titleEn: string;
+    period: string;
+    region: string;
+    description: string;
+    descriptionEn: string;
+    lat: number;
+    lng: number;
+    color: string;
+}
+
+export const DISCOVER_PINS: DiscoverPin[] = [
+    {
+        id: '1',
+        title: 'Rosetta Taşı',
+        titleEn: 'Rosetta Stone',
+        period: 'MÖ 196',
+        region: 'Mısır',
+        description: 'Hiyeroglif, Demotik ve Eski Yunanca yazılmış çözüm taşı.',
+        descriptionEn: 'Key to deciphering Egyptian hieroglyphs, inscribed in three scripts.',
+        lat: 31.4,
+        lng: 30.4,
+        color: '#D4A574',
+    },
+    {
+        id: '2',
+        title: 'Antikythera Mekanizması',
+        titleEn: 'Antikythera Mechanism',
+        period: 'MÖ 150-100',
+        region: 'Yunanistan',
+        description: 'Dünyanın bilinen en eski analog bilgisayarı.',
+        descriptionEn: 'The world\'s oldest known analog computer.',
+        lat: 35.86,
+        lng: 23.31,
+        color: '#8B7355',
+    },
+    {
+        id: '3',
+        title: 'Terracotta Ordusu',
+        titleEn: 'Terracotta Army',
+        period: 'MÖ 210-209',
+        region: 'Çin',
+        description: 'İmparator Qin Shi Huang\'ın mezarını koruyan 8.000 asker.',
+        descriptionEn: '8,000 soldiers guarding Emperor Qin Shi Huang\'s mausoleum.',
+        lat: 34.38,
+        lng: 109.27,
+        color: '#C2956B',
+    },
+    {
+        id: '4',
+        title: 'Göbekli Tepe',
+        titleEn: 'Göbekli Tepe',
+        period: 'MÖ 9600',
+        region: 'Türkiye',
+        description: 'Dünyanın bilinen en eski tapınak kompleksi.',
+        descriptionEn: 'The world\'s oldest known temple complex.',
+        lat: 37.22,
+        lng: 38.92,
+        color: '#A0522D',
+    },
+    {
+        id: '5',
+        title: 'Ölü Deniz Yazmaları',
+        titleEn: 'Dead Sea Scrolls',
+        period: 'MÖ 250 - MS 70',
+        region: 'İsrail',
+        description: 'Bilinen en eski İbranice dini el yazmaları.',
+        descriptionEn: 'The oldest known Hebrew religious manuscripts.',
+        lat: 31.74,
+        lng: 35.46,
+        color: '#DAA520',
+    },
+    {
+        id: '6',
+        title: 'Nebra Gök Diski',
+        titleEn: 'Nebra Sky Disc',
+        period: 'MÖ 1600',
+        region: 'Almanya',
+        description: 'Gökyüzünün bilinen en eski somut tasviri.',
+        descriptionEn: 'The oldest known concrete depiction of the sky.',
+        lat: 51.29,
+        lng: 11.53,
+        color: '#2E8B57',
+    },
+    {
+        id: '7',
+        title: 'Moai Heykelleri',
+        titleEn: 'Moai Statues',
+        period: 'MS 1250-1500',
+        region: 'Paskalya Adası',
+        description: 'Rapa Nui halkının devasa taş heykelleri.',
+        descriptionEn: 'Monolithic human figures carved by the Rapa Nui people.',
+        lat: -27.11,
+        lng: -109.35,
+        color: '#708090',
+    },
+    {
+        id: '8',
+        title: 'Tutankhamun\'un Altın Maskesi',
+        titleEn: 'Tutankhamun\'s Gold Mask',
+        period: 'MÖ 1323',
+        region: 'Mısır',
+        description: 'Antik Mısır\'ın en ikonik arkeolojik eseri.',
+        descriptionEn: 'The most iconic artifact of ancient Egypt.',
+        lat: 25.74,
+        lng: 32.60,
+        color: '#FFD700',
+    },
+    {
+        id: '9',
+        title: 'Parthenon Frizleri',
+        titleEn: 'Parthenon Marbles',
+        period: 'MÖ 447-432',
+        region: 'Yunanistan',
+        description: 'Atina Akropolisi\'ndeki Parthenon\'dan gelen rölyefler.',
+        descriptionEn: 'Marble sculptures from the Parthenon on the Athenian Acropolis.',
+        lat: 37.97,
+        lng: 23.73,
+        color: '#F5F5DC',
+    },
+    {
+        id: '10',
+        title: 'Çatalhöyük',
+        titleEn: 'Çatalhöyük',
+        period: 'MÖ 7500-5700',
+        region: 'Türkiye',
+        description: 'Neolitik dönemin en büyük ve en iyi korunmuş yerleşim yeri.',
+        descriptionEn: 'One of the largest and best-preserved Neolithic settlements.',
+        lat: 37.67,
+        lng: 32.83,
+        color: '#CD853F',
+    },
+    {
+        id: '11',
+        title: 'Machu Picchu',
+        titleEn: 'Machu Picchu',
+        period: 'MS 1450',
+        region: 'Peru',
+        description: 'İnka İmparatorluğu\'nun en ünlü kale-şehri.',
+        descriptionEn: 'The most famous citadel of the Inca Empire.',
+        lat: -13.16,
+        lng: -72.55,
+        color: '#556B2F',
+    },
+    {
+        id: '12',
+        title: 'Pompeii Freskleri',
+        titleEn: 'Pompeii Frescoes',
+        period: 'MS 79',
+        region: 'İtalya',
+        description: 'Vezüv patlamasıyla korunan Roma dönemi duvar resimleri.',
+        descriptionEn: 'Roman wall paintings preserved by the eruption of Vesuvius.',
+        lat: 40.75,
+        lng: 14.49,
+        color: '#B22222',
+    },
+];

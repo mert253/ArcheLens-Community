@@ -1,0 +1,10 @@
+ArcheLens Open Source
+Copyright 2026 ArcheLens contributors
+
+This independent edition adapts owner-provided ArcheLens application code.
+Changes include separate branding and browser packaging, restored authentication,
+bounded uploads, private database policies, safe exports and developer documentation.
+
+Project-owned material is licensed under the Apache License, Version 2.0.
+Third-party packages and externally accessed content retain their own licenses.
+See THIRD_PARTY_NOTICES.md and third_party/ for dependency information.

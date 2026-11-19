@@ -1,0 +1,11 @@
+{
+  "name": "ArcheLens Open Source",
+  "short_name": "ArcheLens",
+  "description": "Open tools for archaeology and cultural heritage",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#1c1917",
+  "background_color": "#fafaf9",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
