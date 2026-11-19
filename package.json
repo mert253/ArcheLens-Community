@@ -1,0 +1,89 @@
+{
+  "name": "archelens-open-source",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "server": "tsx watch server.ts",
+    "dev:all": "concurrently -k \"npm run server\" \"npm run dev\"",
+    "build": "vite build",
+    "build:server": "esbuild server.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist-server/server.cjs --external:fsevents",
+    "start": "node dist-server/server.cjs",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test && npm run build && npm run build:server",
+    "security:scan": "python scripts/scan_secrets.py . --mode worktree"
+  },
+  "dependencies": {
+    "@google/generative-ai": "0.24.1",
+    "@mlc-ai/web-llm": "0.2.82",
+    "@react-three/drei": "10.7.7",
+    "@react-three/fiber": "9.5.0",
+    "@react-three/xr": "6.6.29",
+    "@supabase/supabase-js": "2.99.3",
+    "@tailwindcss/vite": "4.2.2",
+    "@tanstack/react-query": "5.91.3",
+    "@tanstack/react-query-devtools": "5.91.3",
+    "@techstark/opencv-js": "4.12.0-release.1",
+    "browser-image-compression": "2.0.2",
+    "cors": "2.8.6",
+    "dexie": "4.3.0",
+    "dexie-react-hooks": "4.2.0",
+    "dotenv": "17.3.1",
+    "express": "5.2.1",
+    "express-rate-limit": "8.7.1",
+    "jspdf": "4.2.1",
+    "leaflet": "1.9.4",
+    "lru-cache": "11.2.7",
+    "lucide-react": "0.577.0",
+    "multer": "2.5.0",
+    "react": "19.2.7",
+    "react-compare-slider": "4.0.0",
+    "react-dom": "19.2.7",
+    "three": "0.183.2",
+    "zod": "4.6.7",
+    "zustand": "5.0.11"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@types/cors": "2.8.19",
+    "@types/express": "5.0.6",
+    "@types/leaflet": "1.9.21",
+    "@types/multer": "2.1.0",
+    "@types/node": "22.19.15",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/three": "0.183.1",
+    "@vitejs/plugin-react": "5.1.3",
+    "autoprefixer": "10.4.27",
+    "concurrently": "9.2.5",
+    "esbuild": "0.28.2",
+    "jsdom": "28.1.0",
+    "postcss": "8.5.32",
+    "tailwindcss": "4.2.2",
+    "ts-node": "10.9.2",
+    "tsx": "4.23.15",
+    "typescript": "5.8.3",
+    "vite": "6.4.6",
+    "vitest": "4.1.12"
+  },
+  "description": "Open tools for archaeology and cultural heritage",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mert253/ArcheLens-Community.git"
+  },
+  "overrides": {
+    "tsx": {
+      "esbuild": "0.28.2"
+    }
+  }
+}

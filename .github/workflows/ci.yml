@@ -1,0 +1,132 @@
+name: Verify
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Verify public registry lockfiles and pinned Vite patch
+        shell: bash
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const read = path => JSON.parse(fs.readFileSync(path, 'utf8'));
+          for (const directory of ['.', 'supabase/tests']) {
+            const { packages, lockfileVersion } = read(directory + '/package-lock.json');
+            assert.equal(lockfileVersion, 3);
+            for (const [name, entry] of Object.entries(packages)) {
+              if (name === '') continue;
+              assert.ok(name.startsWith('node_modules/') && !entry.link);
+              if (entry.inBundle && !entry.resolved) continue;
+              const url = new URL(entry.resolved);
+              assert.equal(url.origin, 'https://registry.npmjs.org');
+              assert.ok(!url.username && !url.password && entry.integrity);
+            }
+          }
+          const project = read('./package.json');
+          const lock = read('./package-lock.json');
+          const version = lock.packages['node_modules/vite'].version;
+          const [major, minor, patch] = version.split('.').map(Number);
+          assert.equal(project.devDependencies.vite, version);
+          assert.equal(lock.packages[''].devDependencies.vite, version);
+          assert.ok(major === 6 && (minor > 4 || (minor === 4 && patch >= 6)));
+          NODE
+      - name: Prepare Node and Chromium toolchain
+        shell: bash
+        run: |
+          context="$(mktemp -d "$RUNNER_TEMP/archelens-toolchain.XXXXXX")"
+          docker build --pull --tag archelens-ci:24 --file - "$context" <<'DOCKERFILE'
+          FROM node:24-bookworm
+          RUN apt-get update \
+              && apt-get install -y --no-install-recommends chromium fonts-liberation python3 \
+              && rm -rf /var/lib/apt/lists/*
+          DOCKERFILE
+      - name: Install locked dependencies without lifecycle scripts
+        id: dependencies
+        shell: bash
+        run: |
+          install="$RUNNER_TEMP/archelens-ci-inputs"
+          mkdir -p "$install/app" "$install/db" "$install/home"
+          cp package.json package-lock.json "$install/app/"
+          cp supabase/tests/package.json supabase/tests/package-lock.json "$install/db/"
+          docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$install,dst=/install" \
+            --entrypoint /usr/bin/env archelens-ci:24 -i \
+            PATH=/usr/local/bin:/usr/bin:/bin HOME=/install/home \
+            npm_config_update_notifier=false /bin/bash -euc '
+              for project in /install/app /install/db; do
+                cd "$project"
+                npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/
+              done
+            '
+      - name: Verify build, browser, database and Git history offline
+        shell: bash
+        timeout-minutes: 9
+        run: |
+          install="$RUNNER_TEMP/archelens-ci-inputs"
+          docker run --rm --init --read-only --network none --ipc none \
+            --cap-drop ALL --security-opt no-new-privileges --user 1000:1000 \
+            --cpus 2 --memory 3g --memory-swap 3g --pids-limit 256 \
+            --ulimit cpu=180:240 --ulimit fsize=134217728:134217728 --ulimit core=0:0 \
+            --tmpfs /scratch:rw,exec,nosuid,nodev,size=512m,mode=0700,uid=1000,gid=1000 \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/source,readonly" \
+            --mount "type=bind,src=$install/app/node_modules,dst=/deps/app/node_modules,readonly" \
+            --mount "type=bind,src=$install/db/node_modules,dst=/deps/db/node_modules,readonly" \
+            --entrypoint /usr/bin/env archelens-ci:24 -i \
+            PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 CI=true \
+            HOME=/scratch/home TMPDIR=/scratch/tmp XDG_RUNTIME_DIR=/scratch/run \
+            npm_config_offline=true npm_config_update_notifier=false CHROME_BIN=/usr/bin/chromium \
+            timeout --kill-after=10s 8m /bin/bash -euc '
+              mkdir -p -m 700 "$HOME" "$TMPDIR" "$XDG_RUNTIME_DIR" /scratch/repo
+              cp -R /source/. /scratch/repo/
+              cd /scratch/repo
+              # Keep package directories read-only. Vite writes its cache beside
+              # their links in disposable scratch.
+              mkdir node_modules supabase/tests/node_modules
+              for dependency in /deps/app/node_modules/* /deps/app/node_modules/.bin; do
+                ln -s "$dependency" "node_modules/${dependency##*/}"
+              done
+              ln -s /deps/db/node_modules/@electric-sql supabase/tests/node_modules/
+
+              test "$(git rev-parse --is-shallow-repository)" = false
+              test -n "$(git for-each-ref --format="%(refname)" refs/remotes/origin)"
+              git cat-file -t HEAD | grep -qx commit
+              python3 -B scripts/scan_secrets.py . --mode worktree
+              python3 -B scripts/scan_secrets.py . --mode history --privacy
+              python3 -B -m unittest discover -s scripts -p test_scan_secrets.py
+
+              npm run check
+              node --test scripts/browser_csp_smoke.mjs
+              npm test --prefix supabase/tests
+            '
+      - name: Check both lockfiles against npm advisories
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        shell: bash
+        run: |
+          install="$RUNNER_TEMP/archelens-ci-inputs"
+          docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$install,dst=/install" \
+            --entrypoint /usr/bin/env archelens-ci:24 -i \
+            PATH=/usr/local/bin:/usr/bin:/bin HOME=/install/home \
+            npm_config_update_notifier=false /bin/bash -uc '
+              status=0
+              for project in /install/app /install/db; do
+                cd "$project" || exit 1
+                npm audit --ignore-scripts --audit-level=low --registry=https://registry.npmjs.org/ || status=1
+              done
+              exit "$status"
+            '
