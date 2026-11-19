@@ -64,7 +64,7 @@
     "concurrently": "9.2.5",
     "esbuild": "0.28.2",
     "jsdom": "28.1.0",
-    "postcss": "8.5.32",
+    "postcss": "8.5.33",
     "tailwindcss": "4.2.2",
     "ts-node": "10.9.2",
     "tsx": "4.23.15",
