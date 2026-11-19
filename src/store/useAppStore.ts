@@ -58,6 +58,7 @@ export interface AppActions {
   ) => void;
   resetApp: () => void;
   revokeUrls: () => void;
+  setGlbModelUrl: (url: string | null) => void;
 }
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
@@ -103,11 +104,14 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     const applySession = (session: Session | null) => {
       const user = session?.user ?? null;
       const { user: previousUser, authRevision } = get();
-      if (previousUser && previousUser.id !== user?.id) {
+      const accountChanged = previousUser?.id !== user?.id;
+      if (accountChanged && previousUser) {
         get().revokeUrls();
         get().resetApp();
+      } else if (accountChanged) {
+        get().setGlbModelUrl(null);
       }
-      set({ session, user, authLoading: false, authRevision: authRevision + Number(previousUser?.id !== user?.id) });
+      set({ session, user, authLoading: false, authRevision: authRevision + Number(accountChanged) });
     };
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!receivedAuthEvent) applySession(session);
@@ -140,29 +144,37 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       systemLogs: [...state.systemLogs, { time: new Date().toLocaleTimeString(), severity, msg: message, ...(meta ? { meta } : {}) }]
     };
   }),
-  resetApp: () => set({
-    image: null,
-    imageBase64: null,
-    result: null,
-    error: null,
-    loading: false,
-    systemLogs: [],
-    restoredImage: null,
-    showComparison: false,
-    compareResult: null,
-    compareImages: [],
-    evidenceRefs: [],
-    restoreConfidenceScore: 0,
-    hasEvidence: false,
-    epigraphyMode: false,
-    epigraphyDetections: [],
-    epigraphyImage: null,
-    epigraphyLoading: false,
-    cvSummary: null,
-    cvOverlayDataUrl: null,
-    cvRegionMapDataUrl: null,
-    glbModelUrl: null,
-  }),
+  setGlbModelUrl: (url) => {
+    const previousUrl = get().glbModelUrl;
+    if (previousUrl === url) return;
+    if (previousUrl?.startsWith('blob:')) URL.revokeObjectURL(previousUrl);
+    set({ glbModelUrl: url });
+  },
+  resetApp: () => {
+    get().setGlbModelUrl(null);
+    set({
+      image: null,
+      imageBase64: null,
+      result: null,
+      error: null,
+      loading: false,
+      systemLogs: [],
+      restoredImage: null,
+      showComparison: false,
+      compareResult: null,
+      compareImages: [],
+      evidenceRefs: [],
+      restoreConfidenceScore: 0,
+      hasEvidence: false,
+      epigraphyMode: false,
+      epigraphyDetections: [],
+      epigraphyImage: null,
+      epigraphyLoading: false,
+      cvSummary: null,
+      cvOverlayDataUrl: null,
+      cvRegionMapDataUrl: null,
+    });
+  },
   revokeUrls: () => {
     const { image, restoredImage, compareImages } = get();
     if (image?.startsWith('blob:')) URL.revokeObjectURL(image);

@@ -1,5 +1,5 @@
 import { getAuthHeaders } from '../../lib/api';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { fetchModelBlob } from '../../lib/modelDownload';
 import {
   Camera, Upload, CheckCircle, AlertCircle,
@@ -57,30 +57,40 @@ function StepBar({ step, tr }: { step: Step; tr: boolean }) {
 
 // ─── Image thumbnail grid ─────────────────────────────────────────────────────
 function ImageGrid({ files, onRemove }: { files: File[]; onRemove: (i: number) => void }) {
+  const [previews, setPreviews] = useState<{ files: File[]; urls: string[] }>();
+  useEffect(() => {
+    const urls = files.map(file => URL.createObjectURL(file));
+    setPreviews({ files, urls });
+    return () => urls.forEach(url => URL.revokeObjectURL(url));
+  }, [files]);
+
   return (
     <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 mt-4 max-h-56 overflow-y-auto">
-      {files.map((f, i) => {
-        const src = URL.createObjectURL(f);
-        return (
-          <div key={i} className="relative group aspect-square rounded-lg overflow-hidden bg-stone-800">
-            <img src={src} alt="" className="w-full h-full object-cover" onLoad={() => URL.revokeObjectURL(src)} />
-            <button
-              onClick={() => onRemove(i)}
-              className="absolute inset-0 bg-red-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-            >
-              <Trash2 className="w-4 h-4 text-white" />
-            </button>
-          </div>
-        );
-      })}
+      {files.map((_, i) => (
+        <div key={i} className="relative group aspect-square rounded-lg overflow-hidden bg-stone-800">
+          {previews?.files === files && (
+            <img src={previews.urls[i]} alt="" className="w-full h-full object-cover" />
+          )}
+          <button
+            onClick={() => onRemove(i)}
+            className="absolute inset-0 bg-red-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+          >
+            <Trash2 className="w-4 h-4 text-white" />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function PhotogrammetryApp() {
+  const authRevision = useAppStore(state => state.authRevision);
+  return <PhotogrammetrySession key={authRevision} authRevision={authRevision} />;
+}
+
+function PhotogrammetrySession({ authRevision }: { authRevision: number }) {
   const { setAppMode, lang } = useUIStore();
-  const { updateState }      = useAppStore();
   const tr = lang === 'tr';
 
   const [files, setFiles]   = useState<File[]>([]);
@@ -89,12 +99,23 @@ export default function PhotogrammetryApp() {
   const [error, setError]   = useState('');
   const [drag, setDrag]     = useState(false);
   const fileInputRef        = useRef<HTMLInputElement>(null);
-  const pollRef             = useRef<ReturnType<typeof setInterval> | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
-  useEffect(() => () => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    // The viewer may still use the completed model after this screen unmounts.
+  const pollRef             = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRef          = useRef<AbortController | null>(null);
+  const stopWork = useCallback(() => {
+    if (pollRef.current !== null) clearTimeout(pollRef.current);
+    pollRef.current = null;
+    requestRef.current?.abort();
+    requestRef.current = null;
   }, []);
+  useLayoutEffect(() => {
+    const unsubscribe = useAppStore.subscribe(state => {
+      if (state.authRevision !== authRevision) stopWork();
+    });
+    return () => {
+      unsubscribe();
+      stopWork();
+    };
+  }, [authRevision, stopWork]);
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const imgs = Array.from(incoming).filter(f => f.type.startsWith('image/'));
@@ -107,47 +128,77 @@ export default function PhotogrammetryApp() {
     addFiles(e.dataTransfer.files);
   };
 
-  const startPoll = (jobId: string) => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
-      try {
-        const r = await fetch(`${API_BASE}/photogrammetry/${jobId}`, { headers: await getAuthHeaders(false) });
-        if (!r.ok) return;
-        const data: JobStatus = await r.json();
-        setJob(data);
-
-        if (data.status === 'completed') {
-          clearInterval(pollRef.current!);
-          pollRef.current = null;
-          if (data.glbUrl) {
-            const blob = await fetchModelBlob(data.glbUrl);
-            if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-            const url = URL.createObjectURL(blob);
-            objectUrlRef.current = url;
-            setJob({ ...data, glbUrl: url });
-            updateState({ glbModelUrl: url });
-          }
-          setStep('done');
-        } else if (data.status === 'failed') {
-          clearInterval(pollRef.current!);
-          pollRef.current = null;
-          setStep('error');
-          setError(data.message || (tr ? 'İşlem başarısız.' : 'Processing failed.'));
-        }
-      } catch (cause) {
-        if (pollRef.current) clearInterval(pollRef.current);
-        pollRef.current = null;
-        setStep('error');
-        setError(cause instanceof Error ? cause.message : 'Model request failed.');
-      }
-    }, POLL_INTERVAL_MS);
-  };
-
   const handleSubmit = async () => {
+    const current = useAppStore.getState();
+    if (current.authRevision !== authRevision || requestRef.current) return;
     if (files.length < MIN_IMAGES) {
       setError(tr ? `En az ${MIN_IMAGES} fotoğraf gereklidir.` : `At least ${MIN_IMAGES} photos required.`);
       return;
     }
+    const expectedUserId = current.user?.id ?? null;
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const { signal } = controller;
+    function isCurrent() {
+      const { authRevision: revision, user } = useAppStore.getState();
+      return !signal.aborted && requestRef.current === controller &&
+        revision === authRevision && (user?.id ?? null) === expectedUserId;
+    }
+
+    async function request(path: string, init?: RequestInit) {
+      const headers = await getAuthHeaders(false, expectedUserId);
+      if (!isCurrent()) return;
+      return fetch(`${API_BASE}${path}`, { ...init, headers, signal });
+    }
+
+    function showError(message: string) {
+      if (!isCurrent()) return;
+      stopWork();
+      setStep('error');
+      setError(message);
+    }
+
+    function schedulePoll(jobId: string) {
+      pollRef.current = setTimeout(() => {
+        pollRef.current = null;
+        void poll(jobId);
+      }, POLL_INTERVAL_MS);
+    }
+
+    async function poll(jobId: string) {
+      if (!isCurrent()) return;
+      try {
+        const response = await request(`/photogrammetry/${encodeURIComponent(jobId)}`);
+        if (!response || !isCurrent()) return;
+        if (!response.ok) {
+          schedulePoll(jobId);
+          return;
+        }
+        const data: JobStatus = await response.json();
+        if (!isCurrent()) return;
+        if (data.status === 'completed') {
+          if (data.glbUrl) {
+            const blob = await fetchModelBlob(data.glbUrl, { expectedUserId, signal });
+            if (!isCurrent()) return;
+            const url = URL.createObjectURL(blob);
+            useAppStore.getState().setGlbModelUrl(url);
+            setJob({ ...data, glbUrl: url });
+          } else {
+            setJob(data);
+          }
+          requestRef.current = null;
+          setStep('done');
+        } else if (data.status === 'failed') {
+          showError(data.message || (tr ? 'İşlem başarısız.' : 'Processing failed.'));
+        } else {
+          setJob(data);
+          schedulePoll(jobId);
+        }
+      } catch (cause) {
+        showError(cause instanceof Error ? cause.message : 'Model request failed.');
+      }
+    }
+
     setError('');
     setStep('processing');
 
@@ -155,24 +206,24 @@ export default function PhotogrammetryApp() {
     files.forEach((f, i) => formData.append(`image_${i}`, f));
 
     try {
-      const r = await fetch(`${API_BASE}/photogrammetry`, { method: 'POST', headers: await getAuthHeaders(false), body: formData });
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}));
-        throw new Error(d.error || (tr ? 'Sunucu hatası.' : 'Server error.'));
+      const response = await request('/photogrammetry', { method: 'POST', body: formData });
+      if (!response || !isCurrent()) return;
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        showError(data.error || (tr ? 'Sunucu hatası.' : 'Server error.'));
+        return;
       }
-      const data = await r.json();
+      const data = await response.json();
+      if (!isCurrent()) return;
       setJob({ jobId: data.jobId, status: 'queued', progress: 0 });
-      startPoll(data.jobId);
+      schedulePoll(data.jobId);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setStep('error');
-      setError(msg);
+      showError(e instanceof Error ? e.message : String(e));
     }
   };
 
   const reset = () => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = null;
+    stopWork();
     setFiles([]); setStep('upload'); setJob(null); setError('');
   };
 
